@@ -1,4 +1,20 @@
 
+# 暂时的有用结论
+
+一些细节不明白，搁置一下，主要的一些问题已经可以回答了：
+
+1. 决定是否要更多stack？主要是比较SP和stackGuard, 根据frame的大小有不同。
+2. morestack的切换和调用普通函数的不同？掉函数本身就要用栈，但这里要换掉stack。m.morebuf 和g.sched怎么用的比较细致，回头再看[TODO]。
+3. stack 变大多少？现在的简单的double，最大1G。
+4. 新stack的分配？放到mallocgc里一块讨论 
+5. copystack的怎么处理指针？会escape的都分配到堆上了， 扫描stack，只被stack内部引用的地方，引用换个偏移量就行（ajustpointers函数）
+6. G的状态切换涉及的问题 【TODO】
+7. copystack 过程中的抢占，放到 调度里 处理
+7. copystack过程中的GC
+8. 好像用到一直不懂的 PCDATA， [文献](https://docs.google.com/document/d/1lyPIbmsYbXnpNj57a261hgOYVpNRcgydurVQIyZOz_o/pub)
+
+
+
 
 # morestack() 前
 
@@ -140,7 +156,7 @@ TODO: FS 和 TLS (线程本地存储) 有关， [R1](http://stackoverflow.com/qu
 ```
 
 
-# morestack()
+
 
 ## 策略
 
@@ -190,8 +206,6 @@ func stacksplit(ctxt *obj.Link, p *obj.Prog, framesize int32) *obj.Prog {
 	call.To.Sym = obj.Linklookup(ctxt, morestack, 0)
 }
 	
-	
-```
 func preprocess(ctxt *obj.Link, cursym *obj.LSym) {
 	for p := cursym.Text; p != nil; p = p.Link {
 		o = int(p.As)
@@ -207,4 +221,171 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym) {
 
 ```
 
+
+# newstack()
+
+@ stack1.go#665
+
+
+```
+// void gogo(Gobuf*)
+// restore state from Gobuf; longjmp
+TEXT runtime·gogo(SB), NOSPLIT, $0-8
+	MOVQ	buf+0(FP), BX		// gobuf
+	MOVQ	gobuf_g(BX), DX
+	MOVQ	0(DX), CX		// make sure g != nil
+	get_tls(CX)
+	MOVQ	DX, g(CX)
+	MOVQ	gobuf_sp(BX), SP	// restore SP
+	MOVQ	gobuf_ret(BX), AX
+	MOVQ	gobuf_ctxt(BX), DX
+	MOVQ	gobuf_bp(BX), BP
+	MOVQ	$0, gobuf_sp(BX)	// clear to help garbage collector
+	MOVQ	$0, gobuf_ret(BX)
+	MOVQ	$0, gobuf_ctxt(BX)
+	MOVQ	$0, gobuf_bp(BX)
+	MOVQ	gobuf_pc(BX), BX
+	JMP	BX
+```
+
+```
+func main() {
+	// Max stack size is 1 GB on 64-bit, 250 MB on 32-bit.
+	// Using decimal instead of binary GB and MB because
+	// they look nicer in the stack overflow failure message.
+	if ptrSize == 8 {
+		maxstacksize = 1000000000
+	} else {
+		maxstacksize = 250000000
+	}
+```
+
+```
+// Called from runtime·morestack when more stack is needed.
+// Allocate larger stack and relocate to new stack.
+// Stack growth is multiplicative, for constant amortized cost.
+//
+// g->atomicstatus will be Grunning or Gscanrunning upon entry.
+// If the GC is trying to stop this g then it will set preemptscan to true.
+func newstack() {
+	thisg := getg()
+	gp := thisg.m.curg
+	morebuf := thisg.m.morebuf
+	thisg.m.morebuf.pc = 0
+	thisg.m.morebuf.lr = 0
+	thisg.m.morebuf.sp = 0
+	thisg.m.morebuf.g = 0
+	rewindmorestack(&gp.sched)
+
+	// NOTE: stackguard0 may change underfoot, if another thread
+	// is about to try to preempt gp. Read it just once and use that same
+	// value now and below.
+	preempt := atomicloaduintptr(&gp.stackguard0) == stackPreempt
+
+	// Be conservative about where we preempt.
+	// We are interested in preempting user Go code, not runtime code.
+	// If we're holding locks, mallocing, or preemption is disabled, don't
+	// preempt.
+	// This check is very early in newstack so that even the status change
+	// from Grunning to Gwaiting and back doesn't happen in this case.
+	// That status change by itself can be viewed as a small preemption,
+	// because the GC might change Gwaiting to Gscanwaiting, and then
+	// this goroutine has to wait for the GC to finish before continuing.
+	// If the GC is in some way dependent on this goroutine (for example,
+	// it needs a lock held by the goroutine), that small preemption turns
+	// into a real deadlock.
+	if preempt {
+		if thisg.m.locks != 0 || thisg.m.mallocing != 0 || thisg.m.preemptoff != "" || thisg.m.p.ptr().status != _Prunning {
+			// Let the goroutine keep running for now.
+			// gp->preempt is set, so it will be preempted next time.
+			gp.stackguard0 = gp.stack.lo + _StackGuard
+			gogo(&gp.sched) // never return
+		}
+	}
+
+	// The goroutine must be executing in order to call newstack,
+	// so it must be Grunning (or Gscanrunning).
+	casgstatus(gp, _Grunning, _Gwaiting)
+	gp.waitreason = "stack growth"
+
+	sp := gp.sched.sp
+	if thechar == '6' || thechar == '8' {
+		// The call to morestack cost a word.
+		sp -= ptrSize
+	}
+	
+	if gp.sched.ctxt != nil {
+		// morestack wrote sched.ctxt on its way in here,
+		// without a write barrier. Run the write barrier now.
+		// It is not possible to be preempted between then
+		// and now, so it's okay.
+		writebarrierptr_nostore((*uintptr)(unsafe.Pointer(&gp.sched.ctxt)), uintptr(gp.sched.ctxt))
+	}
+
+	if preempt {
+		if gp.preemptscan {
+			for !castogscanstatus(gp, _Gwaiting, _Gscanwaiting) {
+				// Likely to be racing with the GC as
+				// it sees a _Gwaiting and does the
+				// stack scan. If so, gcworkdone will
+				// be set and gcphasework will simply
+				// return.
+			}
+			if !gp.gcscandone {
+				scanstack(gp)
+				gp.gcscandone = true
+			}
+			gp.preemptscan = false
+			gp.preempt = false
+			casfrom_Gscanstatus(gp, _Gscanwaiting, _Gwaiting)
+			casgstatus(gp, _Gwaiting, _Grunning)
+			gp.stackguard0 = gp.stack.lo + _StackGuard
+			gogo(&gp.sched) // never return
+		}
+
+		// Act like goroutine called runtime.Gosched.
+		casgstatus(gp, _Gwaiting, _Grunning)
+		gopreempt_m(gp) // never return
+	}
+
+	// Allocate a bigger segment and move the stack.
+	oldsize := int(gp.stackAlloc)
+	newsize := oldsize * 2
+	if uintptr(newsize) > maxstacksize {
+		print("runtime: goroutine stack exceeds ", maxstacksize, "-byte limit\n")
+		throw("stack overflow")
+	}
+
+	casgstatus(gp, _Gwaiting, _Gcopystack)
+
+	// The concurrent GC will not scan the stack while we are doing the copy since
+	// the gp is in a Gcopystack status.
+	copystack(gp, uintptr(newsize))
+	if stackDebug >= 1 {
+		print("stack grow done\n")
+	}
+	casgstatus(gp, _Gcopystack, _Grunning)
+	gogo(&gp.sched)
+}
+```
+# copysstack
+
+
+```
+	adjustframe((*stkframe)&frame))), adjinfo) 
+	// adjust other miscellaneous things that have pointers into stacks.
+	adjustctxt(gp, &adjinfo)
+	adjustdefers(gp, &adjinfo)
+	adjustpanics(gp, &adjinfo)
+	adjustsudogs(gp, &adjinfo)
+	adjuststkbar(gp, &adjinfo)
+```
+adjustframe
+	// bv describes the memory starting at address scanp.
+	// Adjust any pointers contained therein.
+	adjustpointers
+
+# stackalloc
+
+# stackfree
 
