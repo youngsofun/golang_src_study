@@ -45,13 +45,8 @@ P的工作就是：不停的找G，跑之
 		2. notesleep
 7. execute(gp, inheritTime)
 
-
-
 	
 	
-	
-	
-
 
 ### [P 状态](id:pstats)
 

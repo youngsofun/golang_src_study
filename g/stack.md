@@ -1,4 +1,5 @@
 
+[morestack](morestack.md), [schedule](schedule.md)
 
 # 必要的asm 
 
@@ -18,7 +19,7 @@ or
 2. 少很多优化
 3. 会包含一些	directives, 用于指导后续工作，换句话说，很多工作没有体现在1的汇编代码中
 	1. 用于指导GC等，如：FUNCDATA and PCDATA。
-	2. NOSPLIT = 4, 决定一个函数是否要检查并尝试morestack
+	2. 其他？
 
 
 
@@ -65,7 +66,73 @@ or
 
 这些结论来自下面的例子：
 
-### 例子详解
+### 简单例子
+
+```
+func foo(a int) float64 {
+        return math.Max(float64(a), 10)
+}
+
+func foo2(a int) float64 {
+        return 2* float64(a)
+}
+```
+
+因为  math.Max需要三个word的空间，所以 locals从 0x0涨到0x18
+
+```
+"".foo t=1 size=80 value=0 args=0x10 locals=0x18
+        0x0000 00000 (b.go:5)   TEXT    "".foo(SB), $24-16
+        0x0000 00000 (b.go:5)   MOVQ    (TLS), CX
+        0x0009 00009 (b.go:5)   CMPQ    SP, 16(CX)
+        0x000d 00013 (b.go:5)   JLS     73
+        0x000f 00015 (b.go:5)   SUBQ    $24, SP
+        0x0013 00019 (b.go:5)   FUNCDATA        $0, gclocals·23e8278e2b69a3a75fa59b23c49ed6ad(SB)
+        0x0013 00019 (b.go:5)   FUNCDATA        $1, gclocals·33cdeccccebe80329f1fdbee7f5874cb(SB)
+        0x0013 00019 (b.go:9)   MOVQ    "".a+32(FP), BX
+        0x0018 00024 (b.go:5)   XORPS   X0, X0
+        0x001b 00027 (b.go:9)   CVTSQ2SD        BX, X0
+        0x0020 00032 (b.go:9)   MOVSD   X0, (SP)
+        0x0025 00037 (b.go:9)   MOVSD   $f64.4024000000000000(SB), X0
+        0x002d 00045 (b.go:9)   MOVSD   X0, 8(SP)
+        0x0033 00051 (b.go:9)   PCDATA  $0, $0
+        0x0033 00051 (b.go:9)   CALL    math.Max(SB)
+        0x0038 00056 (b.go:9)   MOVSD   16(SP), X0
+        0x003e 00062 (b.go:9)   MOVSD   X0, "".~r1+40(FP)
+        0x0044 00068 (b.go:9)   ADDQ    $24, SP
+        0x0048 00072 (b.go:9)   RET
+        0x0049 00073 (b.go:5)   CALL    runtime.morestack_noctxt(SB)
+        0x004e 00078 (b.go:5)   JMP     0
+        0x0000 64 48 8b 0c 25 00 00 00 00 48 3b 61 10 76 3a 48  dH..%....H;a.v:H
+        0x0010 83 ec 18 48 8b 5c 24 20 0f 57 c0 f2 48 0f 2a c3  ...H.\$ .W..H.*.
+        0x0020 f2 0f 11 04 24 f2 0f 10 05 00 00 00 00 f2 0f 11  ....$...........
+        0x0030 44 24 08 e8 00 00 00 00 f2 0f 10 44 24 10 f2 0f  D$.........D$...
+        0x0040 11 44 24 28 48 83 c4 18 c3 e8 00 00 00 00 eb b0  .D$(H...........
+        rel 5+4 t=13 +0
+        rel 41+4 t=11 $f64.4024000000000000+0
+        rel 52+4 t=5 math.Max+0
+        rel 74+4 t=5 runtime.morestack_noctxt+0
+        
+"".foo2 t=1 size=48 value=0 args=0x10 locals=0x0
+        0x0000 00000 (b.go:12)  TEXT    "".foo2(SB), $0-16
+        0x0000 00000 (b.go:12)  NOP
+        0x0000 00000 (b.go:12)  NOP
+        0x0000 00000 (b.go:12)  FUNCDATA        $0, gclocals·23e8278e2b69a3a75fa59b23c49ed6ad(SB)
+        0x0000 00000 (b.go:12)  FUNCDATA        $1, gclocals·33cdeccccebe80329f1fdbee7f5874cb(SB)
+        0x0000 00000 (b.go:16)  MOVQ    "".a+8(FP), BX
+        0x0005 00005 (b.go:12)  XORPS   X0, X0
+        0x0008 00008 (b.go:16)  CVTSQ2SD        BX, X1
+        0x000d 00013 (b.go:16)  MOVAPD  X1, X0
+        0x0011 00017 (b.go:16)  MOVSD   $f64.4000000000000000(SB), X1
+        0x0019 00025 (b.go:16)  MULSD   X1, X0
+        0x001d 00029 (b.go:16)  MOVSD   X0, "".~r1+16(FP)
+        0x0023 00035 (b.go:16)  RET
+        0x0000 48 8b 5c 24 08 0f 57 c0 f2 48 0f 2a cb 66 0f 28  H.\$..W..H.*.f.(
+        0x0010 c1 f2 0f 10 0d 00 00 00 00 f2 0f 59 c1 f2 0f 11  ...........Y....
+        0x0020 44 24 10 c3                                      D$..
+        rel 21+4 t=11 $f64.4000000000000000+0
+```
+###  复杂例子
 
 caller: **Read()** in syscall/syscall_unix.go
 
@@ -360,30 +427,7 @@ func socket(domain int, typ int, proto int) (fd int, err error) {
 //sys	accept(s int, rsa *RawSockaddrAny, addrlen *_Socklen) (fd int, err error)
 //sysnb	socket(domain int, typ int, proto int) (fd int, err error)
 ```
-# morestack
 
-```
-syscall_unix.go:159     0x473700        64488b0c25f8ffffff      FS MOVQ FS:0xfffffff8, CX
-syscall_unix.go:159     0x473709        483b6110                CMPQ 0x10(CX), SP
-syscall_unix.go:159     0x47370d        7661                    JBE 0x473770
-...
-syscall_unix.go:159     0x473770        e8cbf6fdff              CALL runtime.morestack_noctxt(SB)
-        syscall_unix.go:159     0x473775        eb89                    JMP syscall.Read(SB)
-```
-
-上面看到除了 syscall.Syscall，read和Read 都有这段代码。它是检查是否需要申请更多stack。
-
-生成过程： (go代码中的 "//go:nosplit" ->) asm 中的 NOSPLIT -> 最终不加人上述代码
-
-* NOSPLIT 用法：```TEXT	·Syscall(SB),NOSPLIT,$0-56```
-
-
-### TLS
-
-TODO: FS 和 TLS (线程本地存储) 有关， [R1](http://stackoverflow.com/questions/6611346/amd64-fs-gs-registers-in-linux)， [R2](http://blog.csdn.net/dog250/article/details/7704898)
-
-
-### The red zone 对应 go 中的 _StackSmall = 128
 
 
 
