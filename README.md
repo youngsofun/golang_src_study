@@ -20,17 +20,20 @@
 	2. [goroutine](g/goroutine.md)  80 %
 	3. [schedule](g/schedule.md) 20 %
 	4. [startup](g/startup.md)
-2. mallocgc 
-3. 结构
-	1. chan
-	2. mutex
-	3. timer
+2. mallocgc  0906
+3. 结构  
+	1. chan  0906
+	2. mutex 0906
+	3. timer 0906
 	4. map
-	5. net
+	5. net 
 	6. refect
 4. cgo
 5. 工具 (prof 等)
 6. 有用的点
+
+待整理：
+	[link](link.md)
 
 附：
 
