@@ -1,0 +1,12 @@
+
+digraph G {
+	node [shape = record]; 
+	runnable -> running [label = "BY P.schedule() or sysmon"]
+	running -> runnable [label = "BY sysmon: preempt(> 20us) "]
+	running -> syscall  [label = "BY user"]
+	syscall -> runnable  
+	syscall -> runnable [label = "BY sysmon :preempt(> 10ms)"]
+	running -> waiting [label = "BY user: chan, w/r socket, sleep, mutex, cond"]
+	waiting -> runnable [label = "BY runtime: timer, netpoll
+	or BY user: chan/unlock/wakeup "]
+}

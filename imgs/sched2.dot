@@ -1,0 +1,23 @@
+
+digraph G {
+	runnable -> schedule -> running [color=red]
+	running -> preempt -> runnable
+	running -> syscall [color=red]
+	syscall -> running [color=red]
+	syscall -> retake -> syscallNoP
+	syscallNoP -> idleP [label = "ret"]
+	idleP -> running [label = "Y"]
+	idleP -> runnable [label = "N"]
+	running ->  block -> waiting 
+	waiting -> wake -> runnable
+
+	running [style=filled; color=lightgrey]
+
+	block [shape = record, label = "user| {chan |w/r socket|sleep|mutex/cond}"]
+	schedule [shape = record, label = "RT|{P.schedule|sysmon}"]
+	wake  [shape = record, label = "{{RT| {timer|netpoll}}|{user|{chan|unlock|wakeup}}}"]
+	preempt [shape = record, label = "RT|sysmon|\> 10ms"]
+	retake [shape = record,label = "RT|sysmon|\> 20us" ]
+
+	idleP [shape = Mdiamond, label = "has idle P?"]
+}

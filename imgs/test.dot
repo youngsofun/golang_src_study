@@ -1,0 +1,19 @@
+// fdp -Tpng  test.dot -o test.png
+// or 
+// dot -Tpng -Kfdp test.dot -o test.png
+
+graph G {
+  e
+  subgraph clusterA {
+    a -- b;
+    subgraph clusterC {
+      C -- D;
+    }
+  }
+  subgraph clusterB {
+    d -- f
+  }
+  d -- D
+  e -- clusterB
+  clusterC -- clusterB
+}

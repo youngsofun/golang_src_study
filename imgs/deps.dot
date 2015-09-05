@@ -1,0 +1,28 @@
+digraph G {
+	node [shape = record]; 
+	builtin -> unicode
+	builtin -> runtime -> sync -> sys
+	sync -> reflect
+	sync -> io
+	subgraph cluster0 {
+	   style = filled;  
+ 	   unicode -> strconv
+ 	   unicode -> container
+	}
+	subgraph cluster1 {
+	    style = filled;  
+	    reflect
+ 		sys -> time -> os -> fmt
+		io -> bytes
+		os -> io_util
+		bytes -> regexp
+		bytes -> path
+		path -> path_filepath
+		os -> path_filepath
+		reflect -> fmt
+		io -> fmt
+	}
+	builtin [label = "{unsafe|builtin}"]
+	unicode [label = "{errors|unicode|math|sort}"]; 
+	bytes [label = "{bytes|strings}"];
+}

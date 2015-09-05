@@ -1,4 +1,79 @@
 
+[TOC]
+
+
+# schedule: overview
+
+
+## G的状态
+
+调度意味着两件事：
+
+1. 一些G要主动或被动的停下来。意味执行了阻塞操作，或者被抢占。
+2. 找可以跑的G跑起来。
+
+就至少 running 和 block 两个状态，
+
+因为cpu优先，running的优先，所以必须有个runnable状态。这导致上面两件事是可以分开处理的。
+
+因为G可能很多，不能所有的block和unblock都用系统调用，runtime代理之。 所以block分成syscall和waiting两个状态。
+
+整体上是三个状态
+
+1. 停 running -> block
+	1. 主动 
+		1. 调用了阻塞的系统调用  -> syscall
+			1. 比如read
+		2. runtime内完成的
+			2. G之间同步操作，不用系统调用（除了用futex在RT内部同步）
+				1. chan
+				2. sync.*
+			3. 批处理，只在一处做系统调用
+				1. 网络IO
+				2. timer相关操作
+	2. 被动 （被sysmon强占）
+2. 启 runable -> running 
+	1. sysmon()
+	2. P.schedule()
+3. block -> runable
+	2. syscall -> runable 
+		1. 被sysmon强占 （注意：这不是“好”事）
+	3. 等待的事件发生
+		1. 批处理处理到了自己
+		2. 等的其他G有反应了
+		
+
+
+## 系统调用的处理
+
+分几种情况：
+
+1. 系统调用本身不阻塞，G的状态不会变化
+2. 阻塞
+	1. runtime内部，来真的：futex
+	2. “批处理”： epoll和futex（用于timer）
+	3. 用户的阻塞系统调用：如果完成的快，就直接返回runing状态接着跑。否则会被抢占(下图中的syscallNoP)。
+
+比如读socket，会先尝试非阻塞的读，如果没读到，就进入waiting状态，交给epoll来处理。
+		
+##### syscall时被强占
+
+系统调用执行时间超过20us可能会被sysmon把P夺走，在系统调用返回后要如果找不的P，就只能到runable状态。syscallNoP的情况，虽然没有P，但是会占用真实的系统线程（比如启动很多G读stdin）。
+
+### 效率和公平
+
+1. 从效率讲，G少时红色是最希望的场景，无浪费，G多时要看抢占的代价和调度的实现；而调度公平取决于： 1. sysmon合理的抢占 2.scheule()的选择策略
+
+
+图例：
+
+0. 椭圆表示状态: running, runnable, waiting, syscall, syscallNoP。
+1. 方框表示操作: RT和user表示操作的发起者
+
+
+![](../imgs/sched2.png)
+
+
 
 1. 调度谁？即停一个G后跑哪个G? [schedule](#:whoisnext)
 
@@ -14,52 +89,41 @@
 	8. syncSema (sync包:mutex, cond..， rwmutex (write-preferring))
 	9. timer
 9. 
-
-
-
-# [调度谁？即停一个G后跑哪个G?](id:whoisnext)
-
-这个简单, 先说
-
-## schedule()：
-
-P的工作就是：不停的找G，跑之
-
-
-1. _g_ := getg()
-2. 需要trace 一下unblock事件？
-3. 跑一下 GCWorker?（前提 gcBlackenEnabled）
-4.  globrunqget (schedule每执行61次，跑一下这个)
-5. runqget (local)
-6. findrunnable() // blocks until work is available
-	1. local
-	2. global
-	3. netpoll(false) // non-blocking
-	4. runqsteal //random steal from other P's， 4 x \#P 次
-	5. 如果在GC mark phase，参与到并发的mark过程中去
-	6. releasep() //  Disassociate p and the current m.
-	7. pidleput(_p_) // Put p to on _Pidle list.
-	8. 再查一遍
-	9. stopm() //Stops execution of the current m until new work is available.
-		1. mput()
-		2. notesleep
-7. execute(gp, inheritTime)
-
 	
 	
+	
+### entersyscall
 
-### [P 状态](id:pstats)
+
+TODO:不值得单独一节奏
+
+请先看 [syscall](stack.md) , 这里主要关注 runtime·entersyscall 和 runtime·exitsyscall， 还是在runtime/proc1中。
+
+```
+//go:nosplit
+//go:nowritebarrier
+func save(pc, sp uintptr) {
+	_g_ := getg()
+
+	_g_.sched.pc = pc
+	_g_.sched.sp = sp
+	_g_.sched.lr = 0
+	_g_.sched.ret = 0
+	_g_.sched.ctxt = nil
+	_g_.sched.g = guintptr(unsafe.Pointer(_g_))
+}
+
+```
 
 
-	_Pidle   
-	_Prunning 
-	_Psyscall
-	_Pgcstop
-	_Pdead
+
+
+
+## 附：
 
 ### [G 状态](id:gstats)
 
-
+```
 	_Gidle            = iota // 0
 	_Grunnable               // 1 runnable and on a run queue
 	_Grunning                // 2
@@ -78,145 +142,14 @@ P的工作就是：不停的找G，跑之
 	_Gscanwaiting  = _Gscan + _Gwaiting  //  0x1004 When scanning completes make it Gwaiting
 	_Gscanenqueue = _Gscan + _Genqueue //  When scanning completes make it Grunnable and put on runqueue
 
-### [状态迁移图](id:change_graph)
-下图是go1.2时画的：
-    
-![](../imgs/goroutine.png)
-
-```
-A: runnable
-R: running
-S: syscall
-W: waiting
 ```
 
-# [调度时机，即什么时候停、停谁？](id:when)
+### [P 状态](id:pstats)
 
 
-	
-
-## sysmon
-
-```
-	forcegcperiod := int64(2 * 60 * 1e9)
-	scavengelimit := int64(5 * 60 * 1e9)
-	while True:
-		usleep(delay)
-		if not polled for more than 10ms:
-			gp := netpoll(false) // non-blocking ,返回一个list！
-			injectglist(gp) // 全部加入globalrunq，如果有idle的P，startm
-		retake(now) // retake P's blocked in syscalls 
-		 			// preempt long running G's
-		if 超过 forcegcperiod 没有gc:
-			injectglist(forcegc.g)
-		if lastscavenge+scavengelimit/2 < now：
-			mHeap_Scavenge(int32(nscavenge), uint64(now), uint64(scavengelimit)
-			
-```
-
-
-
-* 注意 mHeap_Scavenge只在此处被自动触发
-	* 除非user 调用debug.FreeOSMemory())
-* 但是malloc有时好像会是否少量span。
-
-
-#### 概括一下：
-
-
-1. run every / 20 us
-2. try retake / 20(us)
-1. netpoll every / 10ms (nonblocking)
-2. gc / 2分钟
-1. free os mem / 5分钟
-
-
-### forcegchelper 
-
-从开始一直在跑，虽然名字中有“force”，但是普通的并发 gc(gcBackgroundMode)
-
-```
-func init() {
-	go forcegchelper()
-}
-func forcegchelper() {
-	startGC(gcBackgroundMode, true)
-}
-```
-
-##  preemption
-
-retake() 只在sysmon 被调用
-
-```
-for each _p_:
-	s := _p_.status
-	if s == _Psyscall:
-		if it's there for more than 1 sysmon tick (at least 20us):
-	 		handoffp(_p_)
-	elif s == _Prunning:
-		if 跑了超过 10 ms：
-			preemptone(_p_)
-				gp.preempt = true
-				gp.stackguard0 = stackPreempt
-
-```
-注释云：
-
-1. best-effort
-2. The actual preemption will happen at some point in the future
-
-这里的时机是 newstack (// Called from runtime·morestack when more stack is needed.):
-
-```
-preempt := atomicloaduintptr(&gp.stackguard0) == stackPreempt
-if preempt:
-	gopreempt_m(gp) // never return
-		goschedImpl
-			dropg
-			globrunqput(gp)
-			schedule()
-```
-
-	// We are interested in preempting user Go code, not runtime code.
-	// If we're holding locks, mallocing, or preemption is disabled, don't
-	// preempt.
-
-
-
-
-	
-## blocking syscall
-
-请先看 [syscall](syscall.md) , 这里主要关注 runtime·entersyscall 和 runtime·exitsyscall， 还是在runtime/proc1中。
-
-```
-//go:nosplit
-//go:nowritebarrier
-func save(pc, sp uintptr) {
-	_g_ := getg()
-
-	_g_.sched.pc = pc
-	_g_.sched.sp = sp
-	_g_.sched.lr = 0
-	_g_.sched.ret = 0
-	_g_.sched.ctxt = nil
-	_g_.sched.g = guintptr(unsafe.Pointer(_g_))
-}
-
-```
-	 	
-	 
-### futex
-	sleep/Lock internal
-
-## netpoll
-	
-	socket, pipe
-##  chan
-##  syncSema （count may < 0）
-	
-	mutex, cond
-	
-## timer
+	_Pidle   
+	_Prunning 
+	_Psyscall
+	_Pgcstop
+	_Pdead
 

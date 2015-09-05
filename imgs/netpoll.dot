@@ -1,0 +1,8 @@
+digraph G {
+	node [shape = record]; 
+	sched -> netpoll   [label = "netpoll()"];
+	net -> netpoll   [label = "init()/open/wait/setDeadLine"];
+	netpoll -> netpoll  [label = "netpollready()"];
+	net -> syscall [label = "connect()/read.."]
+	
+}

@@ -291,9 +291,6 @@ TEXT syscall.read(SB) /usr/local/go/src/syscall/zsyscall_linux_amd64.go
 
 上面只是用cpu寄存器，系统调用则这要和linux配合。
 
-
-
-
 入口在这里 
 syscall/asm_linux_amd64.s
 

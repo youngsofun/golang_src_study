@@ -4,7 +4,7 @@
 一些细节不明白，搁置一下，主要的一些问题已经可以回答了：
 
 1. 决定是否要更多stack？主要是比较SP和stackGuard, 根据frame的大小有不同。
-2. morestack的切换和调用普通函数的不同？掉函数本身就要用栈，但这里要换掉stack。m.morebuf 和g.sched怎么用的比较细致，回头再看[TODO]。
+2. morestack自己也是函数，它的切换和调用普通函数的不同？掉函数本身就要用栈，但这里要换掉stack。m.morebuf 和g.sched怎么用的比较细致，回头再看[TODO]。
 3. stack 变大多少？现在的简单的double，最大1G。
 4. 新stack的分配？放到mallocgc里一块讨论 
 5. copystack的怎么处理指针？会escape的都分配到堆上了， 扫描stack，只被stack内部引用的地方，引用换个偏移量就行（ajustpointers函数）
@@ -13,6 +13,8 @@
 7. copystack过程中的GC
 8. 好像用到一直不懂的 PCDATA， [文献](https://docs.google.com/document/d/1lyPIbmsYbXnpNj57a261hgOYVpNRcgydurVQIyZOz_o/pub)
 
+TODO: 下面待整理
+----
 
 
 

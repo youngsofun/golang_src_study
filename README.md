@@ -1,3 +1,5 @@
+[TOC]
+
 
 # go1.5 源代码分析
 
@@ -15,22 +17,25 @@
 
 内容 完成度(%)：
 
-1. core 
-	1. [asm, stack and sycall](g/stack.md)  80%
-	2. [goroutine](g/goroutine.md)  80 %
-	3. [schedule](g/schedule.md) 20 %
-	4. [startup](g/startup.md)
-2. mallocgc  0906
+0. [包依赖关系](deps.md)
+1. goroutine
+	1. [asm, stack and syscall](g/stack.md)  80%
+	2. [stack增长](g/morestack.md) 50%
+	2. [goroutine](g/goroutine.md)  80% 
+	3. [schedule: overview](g/schedule.md) 90 %
+	4. [schedule: sync, chan, timer](g/sync.md) 60%
+	5. [schedule: netpoll()](g/netpoll.md) 70% 
+	6. [schedule: schedule(),sysmon()](g/schedule1.md) 80%
+	4. [startup](g/startup.md) 10%
+2. mallocgc  comming
 3. 结构  
-	1. chan  0906
-	2. mutex 0906
-	3. timer 0906
 	4. map
-	5. net 
 	6. refect
 4. cgo
 5. 工具 (prof 等)
 6. 有用的点
+
+
 
 待整理：
 	[link](link.md)
@@ -38,3 +43,4 @@
 附：
 
 1. [读到的源文件说明](runtime_files.md)
+
