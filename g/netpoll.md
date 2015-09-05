@@ -27,7 +27,7 @@
 
 从runtime 调度的角度:
 
-![xx](../imgs/netseq.svg)
+![xx](../imgs/netseq.svg.png)
 
 ## 2. netpoll
 
