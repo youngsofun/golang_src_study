@@ -1,6 +1,4 @@
 
-[TOC]
-
 
 # schedule: overview
 
@@ -54,8 +52,6 @@
 	2. “批处理”： epoll和futex（用于timer）
 	3. 用户的阻塞系统调用：如果完成的快，就直接返回runing状态接着跑。否则会被抢占(下图中的syscallNoP)。
 
-比如读socket，会先尝试非阻塞的读，如果没读到，就进入waiting状态，交给epoll来处理。
-		
 ##### syscall时被强占
 
 系统调用执行时间超过20us可能会被sysmon把P夺走，在系统调用返回后要如果找不的P，就只能到runable状态。syscallNoP的情况，虽然没有P，但是会占用真实的系统线程（比如启动很多G读stdin）。
@@ -73,23 +69,6 @@
 
 ![](../imgs/sched2.png)
 
-
-
-1. 调度谁？即停一个G后跑哪个G? [schedule](#:whoisnext)
-
-     1. [P 状态](#pstats)
-     2. [G 状态](#gstats)
-	 3. [状态迁移图](#change_graph)
-2. [调度时机，即什么时候停、停谁？](#when)
-	3. sysmon, 抢占 （syscall block > 20us； running > 10 ms）
-	4. epoll
-	5. syscall
-	6. futex (sleep/Lock internal)
-	7. chan
-	8. syncSema (sync包:mutex, cond..， rwmutex (write-preferring))
-	9. timer
-9. 
-	
 	
 	
 ### entersyscall

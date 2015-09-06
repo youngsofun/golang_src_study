@@ -22,9 +22,9 @@
 	1. [asm, stack and syscall](g/stack.md)  80%
 	2. [stack增长](g/morestack.md) 50%
 	2. [goroutine](g/goroutine.md)  80% 
-	3. [schedule: overview](g/schedule.md) 90 %
+	3. [schedule: overview](g/schedule.md) 80 %
 	4. [schedule: sync, chan, timer](g/sync.md) 60%
-	5. [schedule: netpoll()](g/netpoll.md) 70% 
+	5. [schedule: netpoll()](g/netpoll.md) 80% 
 	6. [schedule: schedule(),sysmon()](g/schedule1.md) 80%
 	4. [startup](g/startup.md) 10%
 2. mallocgc  comming
