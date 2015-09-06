@@ -1,5 +1,10 @@
 
-[TOC]
+小纲：
+
+1. overview
+2. netpoll
+3. epoll
+4. net
 
 
 ## 1. overview
@@ -227,18 +232,62 @@ type netFD struct {
 }
 ```
 
+注意netFD配了一个特制的读写锁
+
+```
+// fdMutex is a specialized synchronization primitive
+// that manages lifetime of an fd and serializes access
+// to Read and Write methods on netFD.
+type fdMutex struct {
+	state uint64
+	rsema uint32
+	wsema uint32
+}
+```
+
+###  nonblocking socket
+
+
+
+
+socket() 在 net/sock_posix.go
+
+```
+// socket returns a network file descriptor that is ready for
+// asynchronous I/O using the network poller.
+func socket(net string, family, sotype, proto int, ipv6only bool, laddr, raddr sockaddr, deadline time.Time) (fd *netFD, err error) {
+	sysSocket(family, sotype, proto)
+    setDefaultSockopts(s, family, sotype, ipv6only)	fd, err = newFD(s, family, sotype, net)
+	if laddr != nil && raddr == nil {
+		switch sotype {
+		case syscall.SOCK_STREAM, syscall.SOCK_SEQPACKET:
+		     fd.listenStream(laddr, listenerBacklog)
+		case syscall.SOCK_DGRAM:
+			fd.listenDatagram(laddr)
+		}
+	} else  {
+		fd.dial(laddr, raddr, deadline)
+	}
+	
+	return fd, nil
+}
+```
+
+sysSocket net/sock_cloexec.go
+```
+// Wrapper around the socket system call that marks the returned file
+// descriptor as nonblocking and close-on-exec.
+func sysSocket(family, sotype, proto int) (int, error){
+	socketFunc(family, sotype|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, proto)
+}
+```
+
 ### Read()
 
 
 ```
-func (fd *netFD) Read(p []byte) (n int, err error) {
-	if err := fd.readLock(); err != nil {
-		return 0, err
-	}
-	defer fd.readUnlock()
-	if err := fd.pd.PrepareRead(); err != nil {
-		return 0, err
-	}
+	...
+    fd.pd.PrepareRead()
 	for {
 		n, err = syscall.Read(fd.sysfd, p)
 		if err != nil {
@@ -252,16 +301,44 @@ func (fd *netFD) Read(p []byte) (n int, err error) {
 		err = fd.eofError(n, err)
 		break
 	}
-	if _, ok := err.(syscall.Errno); ok {
-		err = os.NewSyscallError("read", err)
-	}
-	return
+	...
+```
+
+#### PrepareRead 
+
+```
+func (pd *pollDesc) PrepareRead() error {
+	return pd.Prepare('r')
 }
+```
 
+net/fd_poll_runtime.go
 
+```
+func (pd *pollDesc) Prepare(mode int) error {
+	res := runtime_pollReset(pd.runtimeCtx, mode)
+	return convertErr(res)
+}
+```
+
+runtime/netpoll.go
+```
+func net_runtime_pollReset(pd *pollDesc, mode int) int {
+	err := netpollcheckerr(pd, int32(mode))
+	if err != 0 {
+		return err
+	}
+	if mode == 'r' {
+		pd.rg = 0
+	} else if mode == 'w' {
+		pd.wg = 0
+	}
+	return 0
+}
 ```
 
 ### accept 
+
 ```
 func (fd *netFD) accept() (netfd *netFD, err error) {
 	if err := fd.readLock(); err != nil {
@@ -312,7 +389,7 @@ func (fd *netFD) accept() (netfd *netFD, err error) {
 }
 ```
 
-### accept
+### connect
 
 ```
 
@@ -330,16 +407,7 @@ func (fd *netFD) connect(la, ra syscall.Sockaddr, deadline time.Time) error {
 			return err
 		}
 		return nil
-	case syscall.EINVAL:
-		// On Solaris we can see EINVAL if the socket has
-		// already been accepted and closed by the server.
-		// Treat this as a successful connection--writes to
-		// the socket will see EOF.  For details and a test
-		// case in C see https://golang.org/issue/6828.
-		if runtime.GOOS == "solaris" {
-			return nil
-		}
-		fallthrough
+		...
 	default:
 		return os.NewSyscallError("connect", err)
 	}
