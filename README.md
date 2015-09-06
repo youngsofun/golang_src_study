@@ -37,9 +37,11 @@
 	5. [schedule: sync, chan](g/sync.md) 50%
 	5. [schedule: netpoll()](g/netpoll.md) 80% 
 	5. [schedule: schedule(),sysmon()](g/schedule1.md) 80%
-	4. [startup](g/startup.md) 10%
+	6. [startup](g/startup.md) 10%
+	7. [panic/defer]
+	8. [signal]
 2. mallocgc 
-	1. [escape: stack or heap?]
+	1. [escape: stack or heap?](mem/escape.md) 70%
 	2. [静态看布局]
 	3. [malloc/free]
 	4. [gc]
