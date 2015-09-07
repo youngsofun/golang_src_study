@@ -33,7 +33,8 @@
 	3. [goroutine](g/goroutine.md)  80% 
 	4. [runtime自己的同步](g/rtlock.md) 80%
 	5. [schedule: overview](g/schedule.md) 80 %
-	5. [schedule: timer](g/timer.md) 80
+	5. [schedule: park](g/park.md) 60%
+	5. [schedule: timer](g/timer.md) 80%
 	5. [schedule: sync, chan](g/sync.md) 50%
 	5. [schedule: netpoll()](g/netpoll.md) 80% 
 	5. [schedule: schedule(),sysmon()](g/schedule1.md) 80%

@@ -4,13 +4,14 @@
 
 [runtime/lock_futex.go](https://github.com/youngsofun/go/blob/master/src/runtime/lock_futex.go) 中实现了基于os提供的futex提供了两组同步原语，字面很好理解：
 
-
+```
 func lock(l *mutex) 
 func unlock(l *mutex) 
 
 func notewakeup(n *note)
 func notesleep(n *note)
 func notetsleep(n *note, ns int64) bool  // return false 表示超时
+```
 
 ```
 type mutex struct {
@@ -21,7 +22,21 @@ type note struct {
 	key uintptr
 }
 ```
+runtime 中note用的不是很多：
 
+notesleep：
+
+     gcMark
+     stopm
+     stoplockedm
+     
+notetsleep：
+	
+	忙等待: stopTheWorldWithSema forEachP
+	demon空闲：比如timer
+
+
+和 notetsleep 功能相近的还有 usleep，用select实现，不需要被提前唤醒，比如sysmon周期运行。
 
 ### futex 的原型
 
@@ -212,7 +227,9 @@ man :
 > inux通过sched_yield()系统调用，提供了一种让进程显式地将处理器时间让给其他等待执行进程的机制。它是通过将进程从活动队列中（因为进程正在执行，所以它肯定位于此队列当中）移到过期队列中实现的。由此产生的效果不仅抢占了该进程并将其放入优先级队列的最后面，还将其放入过期队列中—这样能确保在一段时间内它都不会再被执行了。
 
 
+## 拾遗
 
+m.waitsema 对linux是没用的。
 
 
 
